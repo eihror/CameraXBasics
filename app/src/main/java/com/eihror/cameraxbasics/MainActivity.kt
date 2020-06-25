@@ -1,6 +1,7 @@
 package com.eihror.cameraxbasics
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
+import androidx.camera.core.impl.VideoCaptureConfig
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -18,11 +20,12 @@ import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+@SuppressLint("RestrictedApi")
 class MainActivity : AppCompatActivity() {
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
-    private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
+    private lateinit var videoCapture: VideoCapture
 
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
@@ -84,13 +87,18 @@ class MainActivity : AppCompatActivity() {
             val cameraSelector =
                 CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
 
+            videoCapture = VideoCaptureConfig.Builder().apply {
+                setVideoFrameRate(24)
+                setTargetRotation(camera_preview.display.rotation)
+            }.build()
+
             try {
                 // Unbind use cases before rebinding
                 cameraProvider.unbindAll()
 
                 // Bind use cases to camera
                 camera = cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview, imageCapture
+                    this, cameraSelector, preview, imageCapture, videoCapture
                 )
                 preview?.setSurfaceProvider(camera_preview.createSurfaceProvider())
             } catch (exc: Exception) {
@@ -148,10 +156,35 @@ class MainActivity : AppCompatActivity() {
             mediaDir else filesDir
     }
 
+    fun startRecord() {
+        val file = File(outputDirectory, "${System.currentTimeMillis()}.mp4")
+
+        videoCapture.startRecording(
+            file,
+            ContextCompat.getMainExecutor(this),
+            object : VideoCapture.OnVideoSavedCallback {
+                override fun onVideoSaved(file: File) {
+                    Log.d("ASD", "Video File : $file")
+                }
+
+                override fun onError(videoCaptureError: Int, message: String, cause: Throwable?) {
+                    Log.d("ASD", "Video Error: $message")
+                }
+            })
+    }
+
+    fun stopRecord() {
+        videoCapture.stopRecording()
+    }
+
+
     companion object {
         private const val TAG = "CameraXBasic"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+        )
     }
 }
